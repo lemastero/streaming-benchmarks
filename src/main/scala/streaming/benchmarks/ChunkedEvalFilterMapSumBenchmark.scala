@@ -14,8 +14,9 @@ import monix.execution.Scheduler
 import monix.execution.schedulers.TrampolineExecutionContext.immediate
 import monix.reactive.{Observable => MonixObservable}
 import monix.tail.Iterant
-import monix.tail.batches.Batch
 import org.openjdk.jmh.annotations._
+import zio.{DefaultRuntime, ZIO, Chunk => ZioChunk}
+import zio.stream.{Stream => ZioStream}
 
 import scala.collection.immutable.IndexedSeq
 import scala.concurrent.{Await, Future}
@@ -125,6 +126,28 @@ class ChunkedEvalFilterMapSumBenchmark {
       .fold(0L)(_ + _)
 
     testResult(stream.runSyncUnsafe())
+  }
+
+  object ZioRuntime extends DefaultRuntime
+
+  @Benchmark
+  def zioStream: Long = {
+
+    val stream: ZIO[Any, Nothing, Long] = ZioStream
+      // 1: iteration
+      .fromIterable(allElements)
+      // 2: collect buffers
+      .buffer(chunkSize)
+      // 3: eval map
+      .mapConcat(i => ZioChunk.apply(i))
+      // 4 filter
+      .filter(_ > 0)
+      // 5: map
+      .map(_.toLong)
+      // 6: foldLeft
+      .fold(0L)(_ + _)
+
+    testResult(ZioRuntime.unsafeRun(stream))
   }
 
   @Benchmark
